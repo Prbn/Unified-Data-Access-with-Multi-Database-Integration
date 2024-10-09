@@ -1,0 +1,157 @@
+version: '4'
+
+##### services #####
+services:
+
+  ### clients ###  
+  #drill#
+  drill:
+    image: apache/drill:1.21.1
+    hostname: drill
+    command: /bin/bash
+    tty: true
+    ports:
+    - "8047:8047"
+    - "31010:31010"
+    ulimits:
+      memlock: -1
+      nproc: 32768
+      nofile: 100000
+    volumes: 
+      - ./datasets:/home/jovyan/datasets
+
+  #jupyter#
+  jupyter:
+    image: ist769/jupyter_pyspark:20210924b 
+    hostname: jupyter
+    environment:
+      - GRANT_SUDO=yes
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=SU2orange!       
+    ports:
+      - "8888:8888"
+    volumes: 
+      - ./work:/home/jovyan/work
+      - ./datasets:/home/jovyan/datasets
+    env_file:
+      - ./hadoop-hive.env
+
+  #minio#
+  minio:
+    image: minio/minio:RELEASE.2023-02-10T18-48-39Z
+    hostname: minio
+    command: server /data --console-address ":9001"
+    ports:
+    - "9000:9000"
+    - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: SU2orange!
+    volumes:
+      - minio-data:/data 
+
+  #hive/hadoop#
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop2.7.4-java8
+    hostname: namenode
+    volumes:
+      - hdfs-namenode:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=hive
+    env_file:
+      - ./hadoop-hive.env
+    ports:
+      - "50070:50070"
+      
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop2.7.4-java8
+    hostname: datanode
+    volumes:
+      - hdfs-datanode:/hadoop/dfs/data
+    env_file:
+      - ./hadoop-hive.env
+    environment:
+      SERVICE_PRECONDITION: "namenode:50070"
+    depends_on:
+      - namenode
+    ports:
+      - "50075:50075"
+
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    hostname: hive-server
+    env_file:
+      - ./hadoop-hive.env
+    environment:
+      HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore/metastore"
+      SERVICE_PRECONDITION: "hive-metastore:9083"
+    volumes:
+      - ./datasets:/datasets:ro
+    depends_on:
+      - hive-metastore
+    ports:
+      - "10000:10000"
+
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    hostname: hive-metastore
+    env_file:
+      - ./hadoop-hive.env
+    command: /opt/hive/bin/hive --service metastore
+    environment:
+      SERVICE_PRECONDITION: "namenode:50070 datanode:50075 hive-metastore-postgresql:5432"
+    depends_on:
+      - hive-metastore-postgresql
+    ports:
+      - "9083:9083"
+
+  hive-metastore-postgresql:
+    image: bde2020/hive-metastore-postgresql:2.3.0
+    hostname: hive-metastore-postgresql
+    volumes:
+      - metastore-postgresql:/var/lib/postgresql/data
+    depends_on:
+      - datanode
+
+  # HBase service
+  hbase:
+    image: harisekhon/hbase
+    hostname: hbase
+    ports:
+      - "16010:16010" # HBase Master Web UI
+      - "9090:9090"   # HBase Thrift
+      - "8080:8080"   # HBase REST
+    environment:
+      - HBASE_MASTER_PORT=16010
+      - HBASE_REST_PORT=8080
+      - HBASE_THRIFT_PORT=9090
+      - HBASE_ZOOKEEPER_QUORUM=zookeeper
+      - HBASE_ZOOKEEPER_CLIENT_PORT=2181
+    depends_on:
+      - zookeeper
+
+##### volumes #####
+volumes:
+  minio-data:
+    driver: local
+  hdfs-datanode:
+    driver: local
+  hdfs-namenode:
+    driver: local
+
+ ### ADDED   
+  deltaio_data:
+    driver: local
+
+
+
+
+##### networks #####
+networks:
+  default:
+    name: local
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.10.0/24
+          gateway: 10.10.10.1

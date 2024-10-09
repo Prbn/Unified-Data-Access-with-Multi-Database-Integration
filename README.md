@@ -7,6 +7,10 @@ This project demonstrates the implementation and integration of various relation
 - Prabin Shrestha
 - Hendi Kushta
 
+## Video
+[![Watch the Video](https://img.youtube.com/vi/hRhPmB8tzQk/0.jpg)](https://www.youtube.com/watch?v=hRhPmB8tzQk)
+
+
 ## Table of Contents
 
 - [Overview](#overview)
